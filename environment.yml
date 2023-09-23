@@ -1,0 +1,12 @@
+name: intagents_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - matplotlib  
+  - numpy   
+  - pip
+  - python=3.9
+  - wheel 
+  - scipy
+  - tqdm
