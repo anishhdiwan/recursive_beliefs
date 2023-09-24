@@ -61,6 +61,8 @@ class SecretHitlerBoardGame:
 		self.observable_state = None
 		self.done = False
 		self.president = None
+		self.secret_hitler_idx = secret_hitler_idx
+		self.fascist_idx = fascist_idx
 
 
 	def reset(self):
@@ -80,11 +82,14 @@ class SecretHitlerBoardGame:
 		self.enacted_fas_policies = 0
 		self.draw_pile_size = 17 # draw pile is full
 
-		# features that affect state transitions
+		# features that affect state transitions and rewards
 		self.votes = []
+		self.vote_passed = None
 		self.policy_discarded = None
 		self.policy_enacted = None
+		self.type_of_enacted_policy = None
 		self.num_alive_agents = 5
+		self.which_team_won = False
 				
 		self.state = None
 		self.update_state()
@@ -99,12 +104,11 @@ class SecretHitlerBoardGame:
 		Note: during trajectory simulation (rollouts) within POMCP, an agent uses an estimated opponent policy 
 		'''
 
-		legal_action = self.is_action_legal(action)
+		self.transition_state(action)
 
-		if legal_action and not self.done:
-			next_observable_state = self.transition_state(action)
-			reward = self.get_reward()
-			self.done = self.update_done()
+		next_observable_state = self.state
+		reward = self.get_reward()
+		done = self.done
 
 		return next_observable_state, reward, done
 
@@ -133,11 +137,13 @@ class SecretHitlerBoardGame:
 					# on receiving all votes
 					if self.votes.count(0) <= self.votes.count(1):
 						# if vote fails move on to the next president
+						self.vote_passed = False
 						self.president += 1
 						if self.president >= 5:
 							self.president = 0
 					else:
 						# if vote passes, set the chancellor and reset the proposal conditions
+						self.vote_passed = True
 						self.chancellor = self.state[1][1].index(1)
 						self.chancellor_is_proposed = False
 						self.proposed_chancellor = None
@@ -152,12 +158,16 @@ class SecretHitlerBoardGame:
 				# enact the given policy and end the game if the enacted policies meet their desired count
 				if action["enact_policy"] == 0:
 					self.enacted_lib_policies += 1
+					self.type_of_enacted_policy = 0
 					if self.enacted_lib_policies == 5:
+						self.which_team_won = 0
 						self.done = True
 
 				elif action["enact_policy"] == 1:
 					self.enacted_fas_policies += 1
+					self.type_of_enacted_policy = 1
 					if self.enacted_fas_policies == 6:
+						self.which_team_won = 1
 						self.done = True
 
 				self.policy_enacted = True
@@ -175,6 +185,9 @@ class SecretHitlerBoardGame:
 			elif list(action.keys())[0] == "kill":
 				# TO DO: the next president must be one that is alive and not the next one as per index
 				self.num_alive_agents -= 1
+				if action["kill"] == self.secret_hitler_idx:
+					self.done = True
+					self.which_team_won = 0
 
 
 			self.update_state()
@@ -183,6 +196,70 @@ class SecretHitlerBoardGame:
 			raise Exception("selected action is not valid, can not transition state")
 
 
+	def get_reward(self):
+		'''
+		Return the reward depending on the state and the game interactions.
+		The reward is an array of individual rewards for each agent
+
+		REWARDS LIST
+		on proposed vote passing
+		+/- 1
+
+		on enacting policy
+		+/- 10
+
+		on game ending by
+		killing hiter or enacting required number of policies
+		+/- 100
+
+		'''
+		reward = [0,0,0,0,0]
+
+		if self.vote_passed:
+			# the proposing president gets a reward of +1 on their vote being passed
+			reward[self.state[0][0].index(1)] += 1
+
+		if self.policy_enacted:
+			if self.type_of_enacted_policy == 0:
+				# on enacting a liberal policy, liberal agents get +10 reward, fascist agents get -10 reward
+				for i in range(5):
+					if i == self.secret_hitler_idx:
+						reward[i] -= 10
+					elif i == self.fascist_idx:
+						reward[i] -= 10
+					else:
+						reward[i] += 10
+			if self.type_of_enacted_policy == 1:
+				# on enacting a fascist policy, liberal agents get -10 reward, fascist agents get +10 reward
+				for i in range(5):
+					if i == self.secret_hitler_idx:
+						reward[i] += 10
+					elif i == self.fascist_idx:
+						reward[i] += 10
+					else:
+						reward[i] -= 10
+
+		if self.done:
+			if self.which_team_won == 0:
+				# if liberals win, they get +100 reward and fascists get -100 reward
+				for i in range(5):
+					if i == self.secret_hitler_idx:
+						reward[i] -= 100
+					elif i == self.fascist_idx:
+						reward[i] -= 100
+					else:
+						reward[i] += 100
+			if self.which_team_won == 1:
+				# if fascists win, they get +100 reward and liberals get -100 reward
+				for i in range(5):
+					if i == self.secret_hitler_idx:
+						reward[i] += 100
+					elif i == self.fascist_idx:
+						reward[i] += 100
+					else:
+						reward[i] -= 100
+
+		return reward			
 
 
 	def is_action_legal(action):
