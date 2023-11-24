@@ -18,6 +18,7 @@ class Agent:
 		'''
 		assert (0 <= agent_idx <= 4), "agent index must be in [0,4]"
 		agent_position = [0,0,0,0,0]
+		self.agent_idx = agent_idx
 		self.agent_position = agent_position[agent_idx]
 		self.agent_type = agent_type
 
@@ -45,10 +46,33 @@ class Agent:
 		self.drawn_policies = None # the set of policies drawn from the draw pile if the agent is the president. Else, this is none
 		self.policies_from_president = None # the set of policies handed over by the president if the agent is the chancellor. Else, this is none
 
-	def get_legal_action_set():
+	def get_legal_action_set(self, env):
 		'''
-		Look at the state and infer the set of legal actions that the agent can take
+		Look at the state and infer the set of legal actions that the agent can take. Same as the is_action_legal method from the env class
 		'''
+		if env.state[0][1] == [0,0,0,0,0] and env.state[1][0] == 0:
+			# if there is neither a proposed nor an elected chancellor
+			legal_actions = {"propose": [i for i in range(5) if i!=self.agent_idx]}
+
+		elif env.state[0][1] == [0,0,0,0,0] and env.state[1][0] == 1:
+			# if there is no elected chancellor but there is a proposed one
+			legal_actions = {"vote": [True, False]}
+
+		elif env.state[0][1] != [0,0,0,0,0]:
+			# if there currently is an elected chancellor then 
+			# either the president draws three policies and discards one or the chancellor enacts one of the two policies given to them
+
+			if (not env.policy_discarded) and (not env.policy_enacted):
+				legal_actions = {"discard_policy": [0,1]}
+			elif env.policy_discarded and (not env.policy_enacted):
+				legal_actions = {"enact_policy": [0,1]}
+			elif env.policy_enacted and (env.state[2][1] in [4,5]):
+				legal_actions = {"kill": [i for i in range(5) if i!=self.agent_idx]}
+
+
+		return legal_actions
+
+
 
 
 class SecretHitlerBoardGame:
@@ -57,7 +81,7 @@ class SecretHitlerBoardGame:
 	the game's rule set. The structure and methods of this class are modelled after the structure of most OpenAI gym RL environments
 	'''
 
-	def __init_(self):
+	def __init__(self, secret_hitler_idx=0, fascist_idx=1):
 		self.observable_state = None
 		self.done = False
 		self.president = None
@@ -99,7 +123,7 @@ class SecretHitlerBoardGame:
 		'''
 		The step function transitions the state of the environment to the next state. State transitions are absolute and not relative to any agent.
 		This means that upon taking an action, the new state is one where the next agent takes an action. The current agent can hence not take 
-		an action until all other agents have acted. This is done due to the turnwise nature of the game. 
+		another action until all other agents have acted. This is done due to the turnwise nature of the game. 
 
 		Note: during trajectory simulation (rollouts) within POMCP, an agent uses an estimated opponent policy 
 		'''
@@ -121,16 +145,20 @@ class SecretHitlerBoardGame:
 		For example, an action could be {"kill": 3} to imply kill agent at index 3 or {"vote": False} to vote against a proposed chancellor
 		'''
 
-		action_is_legal, legal_actions = is_action_legal(action)
+		action_is_legal, legal_actions = self.is_action_legal(action)
+		print(f"Action: {legal_actions} is {action_is_legal} legal")
 
 		if action_is_legal:
 			if list(action.keys())[0] == "propose":
 				# chancellor is proposed to be the given index
+				# pesident cannot propose themself as chancellor
+				if action["propose"] == self.president:
+					raise Exception("President can not propose themselves as the chancellor")
 				self.chancellor_is_proposed = True
 				self.proposed_chancellor = action["propose"]
 
 			elif list(action.keys())[0] == "vote":
-				if len(self.votes < self.num_alive_agents):
+				if len(self.votes) < self.num_alive_agents:
 					# if all votes are yet to be given, repeat
 					self.votes.append(action["vote"])
 				elif len(self.votes == self.num_alive_agents):
@@ -184,6 +212,7 @@ class SecretHitlerBoardGame:
 
 			elif list(action.keys())[0] == "kill":
 				# TO DO: the next president must be one that is alive and not the next one as per index
+				# For now, an agent is also allowed to kill themself
 				self.num_alive_agents -= 1
 				if action["kill"] == self.secret_hitler_idx:
 					self.done = True
@@ -262,7 +291,7 @@ class SecretHitlerBoardGame:
 		return reward			
 
 
-	def is_action_legal(action):
+	def is_action_legal(self, action):
 		'''
 		Is the current action legal given the current state. Sanity check method to ensure no invalid actions are taken
 		'''
@@ -287,10 +316,10 @@ class SecretHitlerBoardGame:
 				legal_actions = ["kill"]
 
 
-		if action in legal_actions:
+		if list(action.keys())[0] in legal_actions:
 			return True, legal_actions
 		else:
-			return False, _
+			return False, "_"
 
 
 	def update_state(self):
@@ -308,25 +337,25 @@ class SecretHitlerBoardGame:
 
 		temp = [
 		[[0,0,0,0,0], [0,0,0,0,0]],
-		[0, [0,0,0,0,0]]
+		[0, [0,0,0,0,0]],
 		[0,0,0]
 		]
 
-		if reset:
-			if self.president != None:
-				temp[0][0][self.president] = 1
+		# if reset:
+		if self.president != None:
+			temp[0][0][self.president] = 1
 
-			if self.chancellor != None:
-				temp[0][1][self.chancellor] = 1
+		if self.chancellor != None:
+			temp[0][1][self.chancellor] = None
 
-			if self.chancellor_is_proposed:
-				assert self.proposed_chancellor != None
-				temp[1][0] = 1
-				temp[1][1][self.proposed_chancellor] = 1
+		if self.chancellor_is_proposed:
+			assert self.proposed_chancellor != None
+			temp[1][0] = 1
+			temp[1][1][self.proposed_chancellor] = 1
 
-			temp[2][0] = self.enacted_lib_policies
-			temp[2][1] = self.enacted_fas_policies
-			temp[2][2] = self.draw_pile_size
+		temp[2][0] = self.enacted_lib_policies
+		temp[2][1] = self.enacted_fas_policies
+		temp[2][2] = self.draw_pile_size
 
 		self.state = temp
 

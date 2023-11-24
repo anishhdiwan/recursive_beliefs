@@ -1,5 +1,5 @@
 import random
-
+from secret_hitler_env import Agent
 
 def init_draw_pile(num_liberal = 6, num_fascist = 11):
 	'''
@@ -35,4 +35,4 @@ def instantiate_agents():
 	agents[fascist_idx] = Agent("fascist", fascist_idx, hitler_idx)
 	agents[hitler_idx] = Agent("hitler", hitler_idx, fascist_idx)
 
-	return agents
+	return agents, hitler_idx, fascist_idx
