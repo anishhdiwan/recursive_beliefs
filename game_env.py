@@ -51,10 +51,11 @@ class Agent:
 		Look at the state and infer the set of legal actions that the agent can take. Same as the is_action_legal method from the env class
 		This additionally checks to make sure that the agent's role allows that action. For example, only the president can kill other agents
 		'''
+
 		if env.state[0][1] == [0,0,0,0,0] and env.state[1][0] == 0:
 			if self.agent_idx == env.president:
 				# if there is neither a proposed nor an elected chancellor
-				legal_actions = {"propose": [i for i in range(5) if i!=self.agent_idx]}
+				legal_actions = {"propose": [i for i in range(5) if (i!=self.agent_idx and (i not in env.dead_agents))]}
 			else:
 				legal_actions = {"propose": []}
 
@@ -78,7 +79,7 @@ class Agent:
 					legal_actions = {"enact_policy": []}
 			elif env.policy_enacted and (env.state[2][1] in [4,5]):
 				if self.agent_idx == env.president:
-					legal_actions = {"kill": [i for i in range(5) if i!=self.agent_idx]}
+					legal_actions = {"kill": [i for i in range(5) if (i!=self.agent_idx and (i not in env.dead_agents))]}
 				else:
 					legal_actions = {"kill": []}
 
@@ -126,6 +127,7 @@ class SecretHitlerBoardGame:
 		self.policy_enacted = None
 		self.type_of_enacted_policy = None
 		self.num_alive_agents = 5
+		self.dead_agents = []
 		self.which_team_won = False
 				
 		self.state = None
@@ -189,6 +191,10 @@ class SecretHitlerBoardGame:
 						self.president += 1
 						if self.president >= 5:
 							self.president = 0
+						# the next president must be one that is alive
+						while self.president in self.dead_agents:
+							self.president += 1
+
 					else:
 						# if vote passes, set the chancellor and reset the proposal conditions
 						print("Vote Passed")
@@ -228,19 +234,31 @@ class SecretHitlerBoardGame:
 					self.president += 1
 					if self.president >= 5:
 						self.president = 0
-
+					# the next president must be one that is alive
+					while self.president in self.dead_agents:
+						self.president += 1
+					
 					self.chancellor = None
 					self.chancellor_is_proposed = False
 					self.proposed_chancellor = None
 
 			elif list(action.keys())[0] == "kill":
-				# TO DO: the next president must be one that is alive and not the next one as per index
-				# For now, an agent is also allowed to kill themself
 				self.num_alive_agents -= 1
+				self.dead_agents.append(action["kill"])
 				if action["kill"] == self.secret_hitler_idx:
 					self.done = True
 					self.which_team_won = 0
 
+				self.chancellor = None
+				self.chancellor_is_proposed = False
+				self.proposed_chancellor = None
+
+				self.president += 1
+				if self.president >= 5:
+					self.president = 0
+				# the next president must be one that is alive
+				while self.president in self.dead_agents:
+					self.president += 1
 
 			self.update_state()
 

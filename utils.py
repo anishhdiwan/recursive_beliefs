@@ -1,5 +1,5 @@
 import random
-from secret_hitler_env import Agent
+from game_env import Agent
 
 def init_draw_pile(num_liberal = 6, num_fascist = 11):
 	'''
