@@ -10,7 +10,7 @@ class Agent:
 	actions in the environment
 	'''
 
-	def __init__(self, agent_type, agent_idx,  known_agent=None):
+	def __init__(self, agent_type, agent_idx, known_agent=None):
 
 		'''
 		agent_type = liberal, fascist, or hitler
@@ -49,10 +49,14 @@ class Agent:
 	def get_legal_action_set(self, env):
 		'''
 		Look at the state and infer the set of legal actions that the agent can take. Same as the is_action_legal method from the env class
+		This additionally checks to make sure that the agent's role allows that action. For example, only the president can kill other agents
 		'''
 		if env.state[0][1] == [0,0,0,0,0] and env.state[1][0] == 0:
-			# if there is neither a proposed nor an elected chancellor
-			legal_actions = {"propose": [i for i in range(5) if i!=self.agent_idx]}
+			if self.agent_idx == env.president:
+				# if there is neither a proposed nor an elected chancellor
+				legal_actions = {"propose": [i for i in range(5) if i!=self.agent_idx]}
+			else:
+				legal_actions = {"propose": []}
 
 		elif env.state[0][1] == [0,0,0,0,0] and env.state[1][0] == 1:
 			# if there is no elected chancellor but there is a proposed one
@@ -63,11 +67,20 @@ class Agent:
 			# either the president draws three policies and discards one or the chancellor enacts one of the two policies given to them
 
 			if (not env.policy_discarded) and (not env.policy_enacted):
-				legal_actions = {"discard_policy": [0,1]}
+				if self.agent_idx == env.president:
+					legal_actions = {"discard_policy": [0,1]}
+				else:
+					legal_actions = {"discard_policy": []}
 			elif env.policy_discarded and (not env.policy_enacted):
-				legal_actions = {"enact_policy": [0,1]}
+				if self.agent_idx == env.chancellor:
+					legal_actions = {"enact_policy": [0,1]}
+				else:
+					legal_actions = {"enact_policy": []}
 			elif env.policy_enacted and (env.state[2][1] in [4,5]):
-				legal_actions = {"kill": [i for i in range(5) if i!=self.agent_idx]}
+				if self.agent_idx == env.president:
+					legal_actions = {"kill": [i for i in range(5) if i!=self.agent_idx]}
+				else:
+					legal_actions = {"kill": []}
 
 
 		return legal_actions
@@ -146,7 +159,7 @@ class SecretHitlerBoardGame:
 		'''
 
 		action_is_legal, legal_actions = self.is_action_legal(action)
-		print(f"Action: {legal_actions} is {action_is_legal} legal")
+		# print(f"Action: {legal_actions} is {action_is_legal} legal")
 
 		if action_is_legal:
 			if list(action.keys())[0] == "propose":
@@ -155,22 +168,30 @@ class SecretHitlerBoardGame:
 				if action["propose"] == self.president:
 					raise Exception("President can not propose themselves as the chancellor")
 				self.chancellor_is_proposed = True
+				# Reset the policy discard and enact state since a new round has started
+				self.policy_discarded = False
+				self.policy_enacted = False
 				self.proposed_chancellor = action["propose"]
 
 			elif list(action.keys())[0] == "vote":
 				if len(self.votes) < self.num_alive_agents:
 					# if all votes are yet to be given, repeat
 					self.votes.append(action["vote"])
-				elif len(self.votes == self.num_alive_agents):
+					print(f"Voting status: {self.votes}")
+				if len(self.votes) == self.num_alive_agents:
 					# on receiving all votes
-					if self.votes.count(0) <= self.votes.count(1):
+					if self.votes.count(0) >= self.votes.count(1):
+						print("Vote Failed")
 						# if vote fails move on to the next president
 						self.vote_passed = False
+						self.chancellor_is_proposed = False
+						self.proposed_chancellor = None
 						self.president += 1
 						if self.president >= 5:
 							self.president = 0
 					else:
 						# if vote passes, set the chancellor and reset the proposal conditions
+						print("Vote Passed")
 						self.vote_passed = True
 						self.chancellor = self.state[1][1].index(1)
 						self.chancellor_is_proposed = False
@@ -180,6 +201,7 @@ class SecretHitlerBoardGame:
 
 			elif list(action.keys())[0] == "discard_policy":
 				# reduce the size of the draw pile 
+				self.policy_discarded = True
 				self.draw_pile_size -= 3
 
 			elif list(action.keys())[0] == "enact_policy":
@@ -199,6 +221,7 @@ class SecretHitlerBoardGame:
 						self.done = True
 
 				self.policy_enacted = True
+
 				if not self.enacted_fas_policies in [4,5]:
 					# if the current count of enacted fascist policies is 4 or 5, the kill action is valid. In this case, don't change the state
 					# else, reset chancellor, proposed chancellor, and proposal to default and increase president index
@@ -346,7 +369,7 @@ class SecretHitlerBoardGame:
 			temp[0][0][self.president] = 1
 
 		if self.chancellor != None:
-			temp[0][1][self.chancellor] = None
+			temp[0][1][self.chancellor] = 1
 
 		if self.chancellor_is_proposed:
 			assert self.proposed_chancellor != None
